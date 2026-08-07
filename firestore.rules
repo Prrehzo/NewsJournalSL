@@ -1,0 +1,79 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isSuperAdmin() {
+      let role = getUserData().role;
+      return isSignedIn() && (role == 'super_admin' || role == 'admin' || role == 'Super Administrator');
+    }
+    
+    function isSchoolAdmin(schoolId) {
+      let role = getUserData().role;
+      return isSignedIn() && (role == 'school_admin' || role == 'School Admin') && getUserData().schoolId == schoolId;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Allow users to read their own profile
+      // Allow school admins to read reporters in their school
+      // Allow super admins to read/write any profile
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId || 
+        isSuperAdmin() ||
+        ((getUserData().role == 'school_admin' || getUserData().role == 'School Admin') && getUserData().schoolId == resource.data.schoolId) ||
+        // Allow migration logic to search by email (queried by public/authenticated users during login)
+        request.query.limit <= 1
+      );
+      allow create: if isSignedIn(); // Allow initial signup
+      allow update: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+      allow delete: if isSuperAdmin() || (isSchoolAdmin(resource.data.schoolId) && resource.data.role == 'reporter');
+    }
+    
+    // Schools Collection
+    match /schools/{schoolId} {
+      allow read: if true; // Public can see schools
+      allow create: if true; // Public can apply
+      allow update: if isSuperAdmin() || isSchoolAdmin(schoolId);
+      allow delete: if isSuperAdmin();
+    }
+    
+    // Articles Collection
+    match /articles/{articleId} {
+      allow read: if true; // Public can read articles
+      allow create: if isSignedIn() && (getUserData().role in ['school_admin', 'School Admin', 'reporter']);
+      allow update, delete: if isSignedIn() && (
+        isSuperAdmin() || 
+        isSchoolAdmin(resource.data.schoolId) || 
+        request.auth.uid == resource.data.authorId
+      );
+    }
+    
+    // Settings Collection
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+    
+    // Admin Requests (Setup)
+    match /admin_requests/{requestId} {
+      allow create: if true;
+      allow read, update, delete: if isSuperAdmin();
+    }
+    
+    // Newsletter Subscriptions
+    match /subscriptions/{subId} {
+      allow create: if true;
+      allow read, delete: if isSuperAdmin();
+    }
+  }
+}
