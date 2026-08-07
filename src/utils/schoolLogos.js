@@ -8,6 +8,10 @@ export const schoolLogos = [
   {
     name: "Saline High School",
     filename: "saline_high_school_logo.jpg"
+  },
+  {
+    name: "Dev Logo",
+    filename: "dev_logo.jpeg"
   }
 ];
 
