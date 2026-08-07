@@ -1,23 +1,20 @@
 /**
  * AI Article Optimization Service
- * Calls a Vercel serverless function that securely proxies
- * to the Gemini Flash-Lite API. The API key is stored as a
- * Vercel environment variable — never exposed client-side.
+ * Calls the Vercel serverless function proxied to Google's official @google/generative-ai SDK.
+ * The Gemini API key is stored securely in Vercel environment variables.
  */
 
-// The Vercel deployment URL — set via VITE_VERCEL_API_URL in .env
-// Falls back to relative path (only works if hosted on Vercel itself)
 const API_BASE_URL = import.meta.env.VITE_VERCEL_API_URL || '';
 
 export const optimizeArticle = async (text, title = '', category = '') => {
   if (!text || !text.trim()) {
-    throw new Error("Please enter some article text to optimize.");
+    throw new Error("Please enter some article text before optimizing.");
   }
 
   const endpoint = `${API_BASE_URL}/api/optimize-article`;
 
   try {
-    console.log('[AI Service] Sending optimization request to:', endpoint);
+    console.log('[AI Service] Initiating optimization request to:', endpoint);
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -32,57 +29,55 @@ export const optimizeArticle = async (text, title = '', category = '') => {
       })
     });
 
-    // Read the raw response text first so we can handle non-JSON errors
     const rawText = await response.text();
-    console.log('[AI Service] Response status:', response.status, '| Length:', rawText.length);
+    console.log(`[AI Service] HTTP ${response.status} response received. Length: ${rawText.length}`);
 
-    // Attempt to parse the response as JSON
     let data;
     try {
       data = JSON.parse(rawText);
     } catch (parseErr) {
-      // The server returned something that isn't JSON (e.g. HTML error page)
       console.error('[AI Service] Non-JSON response received:', rawText.substring(0, 500));
       throw new Error(
-        `The AI server returned an unexpected response (status ${response.status}). ` +
-        `This may be a temporary issue — please try again in a moment.`
+        `The AI optimization server returned an invalid response format (HTTP ${response.status}). ` +
+        `Please check your network connection and try again.`
       );
     }
 
-    // Handle HTTP error status codes with the parsed JSON error message
-    if (!response.ok) {
-      const errorMsg = data.error || `AI optimization request failed (status ${response.status})`;
-      console.error('[AI Service] API error:', errorMsg);
-      throw new Error(errorMsg);
+    if (!response.ok || !data.success) {
+      const errorMessage = data.error || `AI optimization failed with status ${response.status}`;
+      console.error('[AI Service] Optimization error:', errorMessage);
+      throw new Error(errorMessage);
     }
 
-    // Validate that we got actual content back
     if (!data.improvedText) {
-      console.error('[AI Service] Empty response payload:', data);
-      throw new Error("AI service returned an empty response. Please try again.");
+      console.error('[AI Service] Response missing improvedText field:', data);
+      throw new Error("AI service returned an empty text response. Please try again.");
     }
 
     let improvedText = data.improvedText.trim();
 
-    // Clean up any lingering markdown code block formatting
+    // Clean up code block formatting if present
     if (improvedText.startsWith('```')) {
       improvedText = improvedText.replace(/^```[a-z]*\n?/i, '');
       improvedText = improvedText.replace(/\n?```$/i, '');
+      improvedText = improvedText.trim();
     }
 
-    console.log('[AI Service] Optimization successful. Output length:', improvedText.length);
-    return improvedText.trim();
+    console.log(
+      `[AI Service] Optimization success using ${data.modelUsed || 'Gemini'} ` +
+      `(${data.processingTimeMs || '?'}ms). Output length: ${improvedText.length} chars.`
+    );
+
+    return improvedText;
   } catch (error) {
-    // Network errors (offline, DNS failure, CORS block, etc.)
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      console.error('[AI Service] Network/CORS error:', error);
+      console.error('[AI Service] Network / CORS error:', error);
       throw new Error(
-        'Could not reach the AI optimization server. Please check your internet connection and try again.'
+        'Unable to reach the AI optimization service. Please check your internet connection and try again.'
       );
     }
 
-    // Re-throw errors we already formatted above
-    console.error('[AI Service] Optimization failed:', error);
+    console.error('[AI Service] Article optimization error:', error);
     throw new Error(error.message || 'Failed to optimize article. Please try again.');
   }
 };

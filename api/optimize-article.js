@@ -1,5 +1,8 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
 export default async function handler(req, res) {
-  // CORS Headers for Vercel
+  // Always enforce JSON content type and CORS headers
+  res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -8,30 +11,48 @@ export default async function handler(req, res) {
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
 
+  // Handle preflight CORS request
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed. Use POST.' });
+    return res.status(405).json({
+      success: false,
+      error: 'Method not allowed. Use POST.'
+    });
   }
+
+  const startTime = Date.now();
+  console.log('[Vercel Gemini API] Processing optimization request...');
 
   try {
     const { text, title = '', category = '' } = req.body || {};
 
     if (!text || typeof text !== 'string' || !text.trim()) {
-      return res.status(400).json({ error: 'Article text is required.' });
-    }
-
-    // Retrieve API key securely from server-side environment variable
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ 
-        error: 'GEMINI_API_KEY environment variable is missing on Vercel server configuration.' 
+      console.warn('[Vercel Gemini API] Rejected request: missing article text.');
+      return res.status(400).json({
+        success: false,
+        error: 'Article text is required for AI optimization.'
       });
     }
 
-    const systemPrompt = `You are a professional school news editor.
+    // Retrieve Gemini API key from Vercel environment variables
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error('[Vercel Gemini API] Error: GEMINI_API_KEY environment variable is not configured.');
+      return res.status(500).json({
+        success: false,
+        error: 'Server configuration error: GEMINI_API_KEY environment variable is not set in Vercel.'
+      });
+    }
+
+    console.log(`[Vercel Gemini API] Input size: ${text.length} chars | Title: "${title}" | Category: "${category}"`);
+
+    // Initialize Google Generative AI client using official SDK
+    const genAI = new GoogleGenerativeAI(apiKey);
+
+    const systemInstruction = `You are a professional school news editor.
 
 Your job is to improve student-written school articles.
 
@@ -54,61 +75,78 @@ ARTICLE CATEGORY: ${category}
 ARTICLE TEXT:
 ${text}`;
 
-    // Priority model list starting with Gemini Flash-Lite
-    const models = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-    let lastError = null;
-    let improvedText = null;
+    const promptText = `${systemInstruction}\n\n${userPrompt}`;
 
-    for (const model of models) {
+    // Modern candidate models to attempt in order of performance and availability
+    const candidateModels = [
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-2.5-flash',
+      'gemini-1.5-pro'
+    ];
+
+    let improvedText = null;
+    let successfulModel = null;
+    let lastErrorDetails = [];
+
+    for (const modelName of candidateModels) {
       try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(geminiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  { text: `${systemPrompt}\n\n${userPrompt}` }
-                ]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 8192
-            }
-          })
+        console.log(`[Vercel Gemini API] Attempting generation with model: ${modelName}...`);
+        const model = genAI.getGenerativeAIModel({ model: modelName });
+
+        const result = await model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: promptText }] }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 8192
+          }
         });
 
-        const data = await response.json();
+        const response = await result.response;
+        const candidateText = response.text();
 
-        if (response.ok && data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
-          improvedText = data.candidates[0].content.parts[0].text;
-          break; // Successfully generated content
+        if (candidateText && candidateText.trim().length > 0) {
+          improvedText = candidateText.trim();
+          successfulModel = modelName;
+          console.log(`[Vercel Gemini API] Success using model "${modelName}" in ${Date.now() - startTime}ms.`);
+          break;
         } else {
-          lastError = data.error?.message || `Status ${response.status} from ${model}`;
+          console.warn(`[Vercel Gemini API] Model "${modelName}" returned empty text.`);
+          lastErrorDetails.push(`${modelName}: empty text response`);
         }
-      } catch (err) {
-        lastError = err.message;
+      } catch (modelErr) {
+        const errMsg = modelErr.message || String(modelErr);
+        console.error(`[Vercel Gemini API] Model "${modelName}" failed:`, errMsg);
+        lastErrorDetails.push(`${modelName}: ${errMsg}`);
       }
     }
 
     if (!improvedText) {
-      return res.status(502).json({ 
-        error: `Gemini API call failed: ${lastError || 'Unable to generate response'}` 
+      console.error('[Vercel Gemini API] All candidate models failed:', lastErrorDetails);
+      return res.status(502).json({
+        success: false,
+        error: `Gemini API call failed: ${lastErrorDetails.join(' | ')}`
       });
     }
 
     // Clean up code block ticks if returned by AI
-    improvedText = improvedText.trim();
     if (improvedText.startsWith('```')) {
       improvedText = improvedText.replace(/^```[a-z]*\n?/i, '');
       improvedText = improvedText.replace(/\n?```$/i, '');
+      improvedText = improvedText.trim();
     }
 
-    return res.status(200).json({ improvedText: improvedText.trim() });
+    return res.status(200).json({
+      success: true,
+      improvedText,
+      modelUsed: successfulModel,
+      processingTimeMs: Date.now() - startTime
+    });
   } catch (error) {
-    console.error('Vercel function execution error:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    console.error('[Vercel Gemini API] Unhandled server error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error during article optimization.'
+    });
   }
 }
