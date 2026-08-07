@@ -12,15 +12,16 @@ const sanitizeArticleImages = (article) => {
 };
 
 /**
- * Checks if an article with same title and body already exists for a school.
- * Requirement: "Duplicate article prevention across schools (check title + exact body text)"
+ * Checks if an article with the same title already exists for a school.
+ * Uses title + schoolId instead of full body text to avoid Firestore's
+ * "value for body is too large" query error (body exceeds index size limits).
  */
-export const checkDuplicateArticle = async (title, body) => {
+export const checkDuplicateArticle = async (title, schoolId) => {
     const articlesRef = collection(db, 'articles');
     const q = query(
         articlesRef,
         where('title', '==', title),
-        where('body', '==', body)
+        where('schoolId', '==', schoolId)
     );
 
     const querySnapshot = await getDocs(q);
@@ -28,7 +29,7 @@ export const checkDuplicateArticle = async (title, body) => {
 };
 
 export const createArticle = async (articleData) => {
-    const isDuplicate = await checkDuplicateArticle(articleData.title, articleData.body);
+    const isDuplicate = await checkDuplicateArticle(articleData.title, articleData.schoolId);
 
     if (isDuplicate) {
         throw new Error("An article with this exact title and content already exists.");
