@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Video, Save, ArrowLeft, Loader2, Sparkles, Check, X, User } from 'lucide-react';
+import { Video, Save, ArrowLeft, Loader2, User } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { createArticle, getArticleById, updateArticle } from '../../services/articleService';
-import { optimizeArticle } from '../../services/aiService';
 import { createNotificationForMany, getSuperAdminIds } from '../../services/notificationService';
 import ImageUpload from '../../components/ImageUpload';
+import RichTextEditor from '../../components/RichTextEditor';
 
 export default function CreateArticle() {
     const { currentUser } = useAuth();
@@ -21,12 +21,6 @@ export default function CreateArticle() {
     const [coverImage, setCoverImage] = useState('');
     const [loading, setLoading] = useState(isEditing);
     const [saving, setSaving] = useState(false);
-
-    // AI Optimizer States
-    const [isOptimizing, setIsOptimizing] = useState(false);
-    const [showComparison, setShowComparison] = useState(false);
-    const [optimizedBody, setOptimizedBody] = useState('');
-    const [lastOptimizedTime, setLastOptimizedTime] = useState(0);
 
     useEffect(() => {
         if (isEditing) {
@@ -109,28 +103,8 @@ export default function CreateArticle() {
         }
     };
 
-    const handleOptimize = async () => {
-        if (!body.trim()) return;
-
-        // Debounce / spam protection (5 seconds)
-        const now = Date.now();
-        if (now - lastOptimizedTime < 5000) {
-            alert("Please wait a few seconds before optimizing again.");
-            return;
-        }
-
-        setIsOptimizing(true);
-        try {
-            const improvedText = await optimizeArticle(body, title, category);
-            setOptimizedBody(improvedText);
-            setShowComparison(true);
-            setLastOptimizedTime(now);
-        } catch (error) {
-            alert(error.message || "Failed to optimize article.");
-        } finally {
-            setIsOptimizing(false);
-        }
-    };
+    // AI optimization disabled — editor handles formatting manually.
+    // The optimizeArticle function is preserved in src/services/aiService.js for future premium use.
 
     if (loading) return (
         <div className="h-96 flex items-center justify-center">
@@ -225,83 +199,8 @@ export default function CreateArticle() {
                     </div>
 
                     <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <label className="block text-sm font-bold text-slate-700">Content</label>
-                            {!showComparison && (
-                                <button
-                                    type="button"
-                                    onClick={handleOptimize}
-                                    disabled={!body.trim() || isOptimizing}
-                                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg text-sm font-bold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 transition shadow-sm"
-                                >
-                                    {isOptimizing ? <Loader2 className="animate-spin" size={16} /> : <Sparkles size={16} />}
-                                    Optimize & Improve (AI)
-                                </button>
-                            )}
-                        </div>
-
-                        {showComparison ? (
-                            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="font-bold text-slate-900 text-lg flex items-center gap-2">
-                                        <Sparkles className="text-blue-600" size={20} /> AI Review Mode
-                                    </h3>
-                                    <div className="flex gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowComparison(false)}
-                                            className="px-4 py-2 bg-white text-slate-600 border border-slate-200 rounded-lg font-bold hover:bg-slate-50 transition flex items-center gap-2 text-sm"
-                                        >
-                                            <X size={16} /> Cancel
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowComparison(false)}
-                                            className="px-4 py-2 bg-white text-blue-600 border border-blue-200 rounded-lg font-bold hover:bg-blue-50 transition flex items-center gap-2 text-sm"
-                                        >
-                                            ✏ Keep Editing Original
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setBody(optimizedBody);
-                                                setShowComparison(false);
-                                            }}
-                                            className="px-4 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition flex items-center gap-2 text-sm shadow-sm"
-                                        >
-                                            <Check size={16} /> Accept Changes
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <div className="text-xs font-black text-slate-400 uppercase tracking-widest text-center">Original Draft</div>
-                                        <div className="p-4 bg-white border border-slate-200 rounded-xl h-[500px] overflow-y-auto text-slate-600 font-sans leading-relaxed whitespace-pre-wrap shadow-inner">
-                                            {body}
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <div className="text-xs font-black text-blue-600 uppercase tracking-widest text-center flex items-center justify-center gap-1">
-                                            <Sparkles size={12} /> Improved Version
-                                        </div>
-                                        <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl h-[500px] overflow-y-auto text-slate-900 font-sans leading-relaxed whitespace-pre-wrap ring-4 ring-blue-500/10 shadow-inner">
-                                            {optimizedBody}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div>
-                                <textarea
-                                    required
-                                    className="w-full p-4 h-96 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none font-sans leading-relaxed text-slate-700 shadow-sm"
-                                    placeholder="Write your story here..."
-                                    value={body}
-                                    onChange={(e) => setBody(e.target.value)}
-                                ></textarea>
-                                <p className="text-xs text-slate-400 mt-2 text-right">{body.split(/\s+/).filter(Boolean).length} words</p>
-                            </div>
-                        )}
+                        <label className="block text-sm font-bold text-slate-700">Content</label>
+                        <RichTextEditor value={body} onChange={setBody} />
                     </div>
                 </div>
 
