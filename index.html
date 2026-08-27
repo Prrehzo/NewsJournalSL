@@ -8,6 +8,16 @@
   <meta name="description" content="News Journal SL is a dedicated platform designed to amplify the achievements, stories, and innovative ideas emerging from schools across Sierra Leone." />
   <meta name="theme-color" content="#0f172a" />
   <title>News Journal SL | Empowering Student Voices</title>
+  <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+  <script>
+    window.OneSignalDeferred = window.OneSignalDeferred || [];
+    OneSignalDeferred.push(async function(OneSignal) {
+      await OneSignal.init({
+        appId: "a521bf18-01a8-43d3-b3bb-06d0b8f8bd22",
+        allowLocalhostAsSecureOrigin: true,
+      });
+    });
+  </script>
 </head>
 
 <body>

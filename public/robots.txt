@@ -1,4 +1,14 @@
 User-agent: *
 Allow: /
 
+# Private / authenticated routes
+Disallow: /dashboard
+Disallow: /school-admin
+Disallow: /super-admin
+Disallow: /login
+Disallow: /admin-login
+Disallow: /school-admin-login
+Disallow: /signup
+Disallow: /super-admin-setup
+
 Sitemap: https://newsjournalsl.web.app/sitemap.xml

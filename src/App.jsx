@@ -6,6 +6,7 @@ import { ToastProvider } from './context/ToastContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import ScrollToTop from './components/ScrollToTop';
+import VerificationNotice from './components/VerificationNotice';
 import NotificationSetup from './components/NotificationSetup';
 
 import Home from './pages/Home';
@@ -15,6 +16,7 @@ import Article from './pages/Article';
 import Category from './pages/Category';
 import Search from './pages/Search';
 import About from './pages/About';
+import Dashboard from './pages/Dashboard';
 import RegisterSchool from './pages/RegisterSchool';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
@@ -90,6 +92,7 @@ function App() {
           <ScrollToTop />
           <NotificationSetup />
           <ToastProvider>
+          <VerificationNotice />
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<Layout />}>
@@ -109,6 +112,11 @@ function App() {
               <Route path="terms" element={<Terms />} />
               <Route path="register-school" element={<RegisterSchool />} />
               <Route path="super-admin-setup" element={<SuperAdminSetup />} />
+              <Route path="dashboard" element={
+                <ProtectedRoute allowedRoles={['public']}>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
             </Route>
 
             {/* School Admin Routes */}

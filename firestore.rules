@@ -22,6 +22,11 @@ service cloud.firestore {
       return isSignedIn() && (role == 'school_admin' || role == 'School Admin') && getUserData().schoolId == schoolId;
     }
 
+    // Collection Group Queries
+    match /{path=**}/reactions/{reactionId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
     // Users Collection
     match /users/{userId} {
       // Allow users to read their own profile
@@ -49,13 +54,75 @@ service cloud.firestore {
     
     // Articles Collection
     match /articles/{articleId} {
+      function isReactionUpdate() {
+        let diffKeys = request.resource.data.diff(resource.data).affectedKeys();
+        let onlyAllowedKeysChanged = diffKeys.hasOnly(['likeCount', 'dislikeCount']);
+        
+        let oldLikeCount = resource.data.likeCount != null ? resource.data.likeCount : 0;
+        let newLikeCount = request.resource.data.likeCount != null ? request.resource.data.likeCount : 0;
+        let oldDislikeCount = resource.data.dislikeCount != null ? resource.data.dislikeCount : 0;
+        let newDislikeCount = request.resource.data.dislikeCount != null ? request.resource.data.dislikeCount : 0;
+        
+        let likeDiff = newLikeCount - oldLikeCount;
+        let dislikeDiff = newDislikeCount - oldDislikeCount;
+        
+        let isValidCounts = newLikeCount >= 0 && newDislikeCount >= 0;
+        
+        let isMathValid = (likeDiff == 1 || likeDiff == 0 || likeDiff == -1) &&
+                          (dislikeDiff == 1 || dislikeDiff == 0 || dislikeDiff == -1) &&
+                          (likeDiff != 0 || dislikeDiff != 0);
+
+        let reactionPath = /databases/$(database)/documents/articles/$(articleId)/reactions/$(request.auth.uid);
+        let reactionExistsAfter = existsAfter(reactionPath);
+        let reactionDataAfter = reactionExistsAfter ? getAfter(reactionPath).data : null;
+
+        let isLike = likeDiff == 1 && dislikeDiff == 0 && reactionExistsAfter && reactionDataAfter.type == 'like';
+        let isDislike = likeDiff == 0 && dislikeDiff == 1 && reactionExistsAfter && reactionDataAfter.type == 'dislike';
+        let isUnlike = likeDiff == -1 && dislikeDiff == 0 && !reactionExistsAfter;
+        let isUndislike = likeDiff == 0 && dislikeDiff == -1 && !reactionExistsAfter;
+        let isSwitchLike = likeDiff == 1 && dislikeDiff == -1 && reactionExistsAfter && reactionDataAfter.type == 'like';
+        let isSwitchDislike = likeDiff == -1 && dislikeDiff == 1 && reactionExistsAfter && reactionDataAfter.type == 'dislike';
+        
+        return onlyAllowedKeysChanged && isValidCounts && isMathValid && (
+          isLike || isDislike || isUnlike || isUndislike || isSwitchLike || isSwitchDislike
+        );
+      }
+
       allow read: if true; // Public can read articles
       allow create: if isSignedIn() && (getUserData().role in ['school_admin', 'School Admin', 'reporter']);
-      allow update, delete: if isSignedIn() && (
+      allow update: if isSignedIn() && (
+        isSuperAdmin() || 
+        isSchoolAdmin(resource.data.schoolId) || 
+        request.auth.uid == resource.data.authorId ||
+        isReactionUpdate()
+      );
+      allow delete: if isSignedIn() && (
         isSuperAdmin() || 
         isSchoolAdmin(resource.data.schoolId) || 
         request.auth.uid == resource.data.authorId
       );
+
+      match /reactions/{userId} {
+        allow read: if true;
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+        allow create, update: if isSignedIn() && request.auth.uid == userId &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.articleId == articleId &&
+          request.resource.data.type in ['like', 'dislike'] &&
+          request.resource.data.keys().hasOnly(['userId', 'articleId', 'type', 'createdAt', 'updatedAt']);
+      }
+      
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isSignedIn() && 
+          request.auth.token.email_verified == true &&
+          request.resource.data.userId == request.auth.uid &&
+          request.resource.data.articleId == articleId &&
+          request.resource.data.text is string &&
+          request.resource.data.text.trim().size() > 0 &&
+          request.resource.data.keys().hasOnly(['userId', 'articleId', 'text', 'displayName', 'createdAt', 'updatedAt']);
+        allow delete: if isSignedIn() && (request.auth.uid == resource.data.userId || isSuperAdmin());
+      }
     }
     
     // Settings Collection

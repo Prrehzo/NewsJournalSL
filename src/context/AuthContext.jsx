@@ -165,7 +165,17 @@ export function AuthProvider({ children }) {
     return null;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Clear OneSignal identity before Firebase sign-out
+    try {
+      if (window.OneSignalDeferred) {
+        window.OneSignalDeferred.push(async function(OneSignal) {
+          await OneSignal.logout();
+        });
+      }
+    } catch (err) {
+      console.warn('OneSignal logout failed:', err);
+    }
     return auth.signOut();
   };
 

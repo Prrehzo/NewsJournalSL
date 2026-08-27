@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, updateDoc, deleteDoc, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, updateDoc, deleteDoc, limit, orderBy, writeBatch, increment, collectionGroup } from 'firebase/firestore';
 
 const sanitizeArticleImages = (article) => {
     if (article.coverImage && (article.coverImage.includes('unsplash.com') || article.coverImage.includes('picsum.photos'))) {
@@ -203,4 +203,100 @@ export const addAdmin = async (adminData) => {
 
 export const deleteAdmin = async (id) => {
     return await deleteDoc(doc(db, 'users', id));
+};
+
+// --- Reactions ---
+export const toggleReaction = async (articleId, userId, newType, currentType) => {
+    const batch = writeBatch(db);
+    const articleRef = doc(db, 'articles', articleId);
+    const reactionRef = doc(db, 'articles', articleId, 'reactions', userId);
+
+    let likeDiff = 0;
+    let dislikeDiff = 0;
+
+    if (currentType === newType) {
+        // Remove reaction
+        batch.delete(reactionRef);
+        if (currentType === 'like') likeDiff = -1;
+        if (currentType === 'dislike') dislikeDiff = -1;
+    } else {
+        // Set new reaction
+        batch.set(reactionRef, {
+            userId,
+            articleId,
+            type: newType,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+        if (newType === 'like') {
+            likeDiff = 1;
+            if (currentType === 'dislike') dislikeDiff = -1;
+        } else if (newType === 'dislike') {
+            dislikeDiff = 1;
+            if (currentType === 'like') likeDiff = -1;
+        }
+    }
+
+    const updates = {};
+    if (likeDiff !== 0) updates.likeCount = increment(likeDiff);
+    if (dislikeDiff !== 0) updates.dislikeCount = increment(dislikeDiff);
+    
+    if (Object.keys(updates).length > 0) {
+        batch.update(articleRef, updates);
+    }
+
+    await batch.commit();
+};
+
+export const getUserReaction = async (articleId, userId) => {
+    const docRef = doc(db, 'articles', articleId, 'reactions', userId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        return docSnap.data().type;
+    }
+    return null;
+};
+
+export const getUserReactions = async (userId) => {
+    const q = query(
+        collectionGroup(db, 'reactions'),
+        where('userId', '==', userId)
+    );
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+// --- Comments ---
+export const addComment = async (articleId, userId, displayName, text) => {
+    return await addDoc(collection(db, 'articles', articleId, 'comments'), {
+        userId,
+        articleId,
+        displayName,
+        text: text.trim(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+    });
+};
+
+export const getComments = async (articleId) => {
+    const commentsRef = collection(db, 'articles', articleId, 'comments');
+    const q = query(commentsRef, orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const deleteComment = async (articleId, commentId) => {
+    return await deleteDoc(doc(db, 'articles', articleId, 'comments', commentId));
+};
+
+// --- Schools ---
+export const getSchoolById = async (schoolId) => {
+    if (!schoolId) return null;
+    const docRef = doc(db, 'schools', schoolId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+        return { id: docSnap.id, ...docSnap.data() };
+    }
+    return null;
 };

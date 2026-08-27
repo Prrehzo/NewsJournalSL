@@ -172,6 +172,19 @@ export default function NotificationBell() {
                                     <CheckCheck size={14} /> Mark all read
                                 </button>
                             )}
+                            <button
+                                onClick={() => {
+                                    if (window.OneSignalDeferred) {
+                                        window.OneSignalDeferred.push(async function(OneSignal) {
+                                            await OneSignal.Slidedown.promptPush();
+                                        });
+                                    }
+                                }}
+                                className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition ml-2"
+                                title="Enable Push Notifications"
+                            >
+                                <Bell size={14} /> Enable Push
+                            </button>
                         </div>
 
                         {/* Notification List */}

@@ -1,22 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Download, Share2, Clock, MapPin, Loader2, AlertCircle, Check } from 'lucide-react';
+import { Download, Share2, Clock, MapPin, Loader2, AlertCircle, Check, ThumbsUp, ThumbsDown, MessageSquare, Trash2, Send } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { motion } from 'framer-motion';
 import DOMPurify from 'dompurify';
 
 import { getEmbedUrl } from '../utils/videoUtils';
-import { getArticleById, getRelatedArticles } from '../services/articleService';
+import { getArticleById, getRelatedArticles, toggleReaction, getUserReaction, addComment, deleteComment, getComments, getSchoolById } from '../services/articleService';
 import SEO from '../components/SEO';
+import { useAuth } from '../context/AuthContext';
 
 export default function Article() {
     const { id } = useParams();
+    const { currentUser, userRole } = useAuth();
+    
     const [article, setArticle] = useState(null);
     const [relatedArticles, setRelatedArticles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [copied, setCopied] = useState(false);
+
+    // Reactions & Comments state
+    const [userReaction, setUserReaction] = useState(null);
+    const [likeCount, setLikeCount] = useState(0);
+    const [dislikeCount, setDislikeCount] = useState(0);
+    const [reactionLoading, setReactionLoading] = useState(false);
+
+    const [comments, setComments] = useState([]);
+    const [newComment, setNewComment] = useState("");
+    const [schoolPlan, setSchoolPlan] = useState('basic');
 
     useEffect(() => {
         const fetchArticleData = async () => {
@@ -25,9 +38,24 @@ export default function Article() {
                 const data = await getArticleById(id);
                 if (data) {
                     setArticle(data);
+                    setLikeCount(data.likeCount || 0);
+                    setDislikeCount(data.dislikeCount || 0);
+
                     // Fetch related articles
                     const related = await getRelatedArticles(data.category, id);
                     setRelatedArticles(related);
+
+                    // Fetch School Plan
+                    if (data.schoolId) {
+                        const school = await getSchoolById(data.schoolId);
+                        if (school && school.plan) {
+                            setSchoolPlan(school.plan);
+                        }
+                    }
+
+                    // Fetch comments
+                    const fetchedComments = await getComments(id);
+                    setComments(fetchedComments);
                 } else {
                     setError("Article not found");
                 }
@@ -43,69 +71,136 @@ export default function Article() {
         window.scrollTo(0, 0);
     }, [id]);
 
+    // Fetch user reaction separately to depend on currentUser
+    useEffect(() => {
+        const fetchReaction = async () => {
+            if (currentUser && id) {
+                try {
+                    const reaction = await getUserReaction(id, currentUser.uid);
+                    setUserReaction(reaction);
+                } catch (err) {
+                    console.error("Error fetching user reaction:", err);
+                }
+            }
+        };
+        fetchReaction();
+    }, [currentUser, id]);
+
+    const handleReaction = async (type) => {
+        if (!currentUser) {
+            alert("Please sign in to react to this article.");
+            return;
+        }
+        
+        setReactionLoading(true);
+        try {
+            const currentReaction = userReaction;
+            let newReaction = type;
+
+            if (currentReaction === type) {
+                newReaction = null; // Remove reaction
+                if (type === 'like') setLikeCount(prev => Math.max(0, prev - 1));
+                if (type === 'dislike') setDislikeCount(prev => Math.max(0, prev - 1));
+            } else {
+                if (type === 'like') {
+                    setLikeCount(prev => prev + 1);
+                    if (currentReaction === 'dislike') setDislikeCount(prev => Math.max(0, prev - 1));
+                } else if (type === 'dislike') {
+                    setDislikeCount(prev => prev + 1);
+                    if (currentReaction === 'like') setLikeCount(prev => Math.max(0, prev - 1));
+                }
+            }
+            
+            setUserReaction(newReaction);
+            await toggleReaction(id, currentUser.uid, type, currentReaction);
+        } catch (err) {
+            console.error("Error toggling reaction:", err);
+            alert("Failed to update reaction.");
+            // Refresh counts if failure occurs
+            const data = await getArticleById(id);
+            if (data) {
+                setLikeCount(data.likeCount || 0);
+                setDislikeCount(data.dislikeCount || 0);
+            }
+        } finally {
+            setReactionLoading(false);
+        }
+    };
+
+    const handleAddComment = async (e) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        
+        if (!currentUser.emailVerified) {
+            alert("Please verify your email address to post a comment.");
+            return;
+        }
+
+        if (!newComment.trim()) return;
+
+        try {
+            await addComment(id, currentUser.uid, currentUser.displayName || currentUser.email.split('@')[0], newComment);
+            setNewComment("");
+            const updatedComments = await getComments(id);
+            setComments(updatedComments);
+        } catch (err) {
+            console.error("Error adding comment:", err);
+            alert("Failed to post comment.");
+        }
+    };
+
+    const handleDeleteComment = async (commentId) => {
+        if (!window.confirm("Are you sure you want to delete this comment?")) return;
+        try {
+            await deleteComment(id, commentId);
+            setComments(prev => prev.filter(c => c.id !== commentId));
+        } catch (err) {
+            console.error("Error deleting comment:", err);
+            alert("Failed to delete comment.");
+        }
+    };
+
     const handleShare = async () => {
         if (!article) return;
-
         const shareData = {
             title: article.title,
             text: `Check out this story on News Journal SL: ${article.title}`,
             url: window.location.href,
         };
-
         if (navigator.share) {
-            try {
-                await navigator.share(shareData);
-            } catch (err) {
-                console.error("Error sharing:", err);
-            }
+            try { await navigator.share(shareData); } catch (err) { console.error("Error sharing:", err); }
         } else {
-            // Fallback: Copy to clipboard
             try {
                 await navigator.clipboard.writeText(window.location.href);
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
-            } catch (err) {
-                console.error("Failed to copy:", err);
-            }
+            } catch (err) { console.error("Failed to copy:", err); }
         }
     };
 
     const handleDownloadPDF = async () => {
         if (!article) return;
-
         const element = document.getElementById('article-main-content');
         if (!element) return;
-
         try {
             const pdf = new jsPDF('p', 'mm', 'a4');
             const pageWidth = pdf.internal.pageSize.getWidth();
-
             pdf.setFontSize(22);
             pdf.setFont("helvetica", "bold");
             const titleLines = pdf.splitTextToSize(article.title, pageWidth - 40);
             pdf.text(titleLines, 20, 30);
-
             let currentY = 35 + (titleLines.length * 10);
-
             pdf.setFontSize(10);
             pdf.setFont("helvetica", "normal");
             pdf.setTextColor(100);
             const dateStr = article.createdAt?.toDate ? new Date(article.createdAt.toDate()).toLocaleDateString() : 'Recent';
             pdf.text(`${article.schoolName || 'School Staff'} | ${dateStr} | Category: ${article.category || 'General'}`, 20, currentY);
-
             currentY += 15;
-
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                logging: false
-            });
+            const canvas = await html2canvas(element, { scale: 2, useCORS: true, logging: false });
             const imgData = canvas.toDataURL('image/png');
             const imgWidth = pageWidth - 40;
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
             pdf.addImage(imgData, 'PNG', 20, currentY, imgWidth, imgHeight);
-
             pdf.save(`${article.title.substring(0, 30).replace(/[^a-z0-9]/gi, '_')}.pdf`);
         } catch (err) {
             console.error("PDF generation failed", err);
@@ -113,7 +208,6 @@ export default function Article() {
         }
     };
 
-    // Helper to strip HTML for meta description
     const stripHtml = (html) => {
         const tmp = document.createElement("DIV");
         tmp.innerHTML = html;
@@ -149,7 +243,6 @@ export default function Article() {
     const formattedDate = article.createdAt?.toDate ? new Date(article.createdAt.toDate()).toLocaleDateString('en-US', {
         month: 'short', day: 'numeric', year: 'numeric'
     }) : 'Just now';
-
     const plainDescription = stripHtml(article.body).substring(0, 160) + '...';
 
     return (
@@ -227,6 +320,105 @@ export default function Article() {
                                 </div>
                             </motion.div>
                         )}
+                        
+                        {/* Reactions Section */}
+                        <div className="mt-8 flex gap-4">
+                            <button 
+                                onClick={() => handleReaction('like')}
+                                disabled={reactionLoading}
+                                className={`flex items-center gap-2 px-5 py-2.5 rounded-full border transition font-bold shadow-sm ${userReaction === 'like' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                            >
+                                <ThumbsUp size={20} className={userReaction === 'like' ? 'fill-blue-600' : ''} /> 
+                                <span>{likeCount}</span>
+                            </button>
+                            <button 
+                                onClick={() => handleReaction('dislike')}
+                                disabled={reactionLoading}
+                                className={`flex items-center gap-2 px-5 py-2.5 rounded-full border transition font-bold shadow-sm ${userReaction === 'dislike' ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                            >
+                                <ThumbsDown size={20} className={userReaction === 'dislike' ? 'fill-red-600' : ''} /> 
+                                <span>{dislikeCount}</span>
+                            </button>
+                        </div>
+
+                        {/* Comments Section */}
+                        <div className="mt-12 pt-8 border-t border-slate-200">
+                            <h3 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
+                                <MessageSquare className="text-blue-600" />
+                                Comments ({comments.length})
+                            </h3>
+
+                            {schoolPlan === 'premium' ? (
+                                <>
+                                    {currentUser ? (
+                                        <form onSubmit={handleAddComment} className="mb-8">
+                                            <textarea
+                                                value={newComment}
+                                                onChange={(e) => setNewComment(e.target.value)}
+                                                placeholder={currentUser.emailVerified ? "Add a comment..." : "Please verify your email to comment"}
+                                                disabled={!currentUser.emailVerified}
+                                                className="w-full p-4 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition outline-none resize-none min-h-[100px]"
+                                                maxLength={500}
+                                            />
+                                            <div className="flex justify-between items-center mt-3">
+                                                <span className="text-xs text-slate-400 font-medium">
+                                                    {newComment.length}/500 characters
+                                                </span>
+                                                <button 
+                                                    type="submit"
+                                                    disabled={!currentUser.emailVerified || !newComment.trim()}
+                                                    className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    <Send size={16} /> Post Comment
+                                                </button>
+                                            </div>
+                                        </form>
+                                    ) : (
+                                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-6 text-center mb-8">
+                                            <p className="text-slate-600 font-medium mb-4">Join the conversation</p>
+                                            <Link to="/login" className="inline-block bg-blue-600 text-white px-8 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition shadow-sm">
+                                                Sign In to Comment
+                                            </Link>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-6">
+                                        {comments.length > 0 ? comments.map(comment => (
+                                            <div key={comment.id} className="bg-white border border-slate-100 p-5 rounded-xl shadow-sm">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <div>
+                                                        <div className="font-bold text-slate-900">{comment.displayName}</div>
+                                                        <div className="text-xs text-slate-400 font-medium mt-0.5">
+                                                            {comment.createdAt?.toDate ? new Date(comment.createdAt.toDate()).toLocaleDateString() : 'Just now'}
+                                                        </div>
+                                                    </div>
+                                                    {(currentUser?.uid === comment.userId || ['super_admin', 'admin'].includes(userRole)) && (
+                                                        <button 
+                                                            onClick={() => handleDeleteComment(comment.id)}
+                                                            className="text-slate-400 hover:text-red-600 transition p-2 hover:bg-red-50 rounded-lg"
+                                                            title="Delete Comment"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <p className="text-slate-700 text-sm whitespace-pre-wrap">{comment.text}</p>
+                                            </div>
+                                        )) : (
+                                            <p className="text-slate-500 text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                                No comments yet. Be the first to share your thoughts!
+                                            </p>
+                                        )}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center text-slate-500">
+                                    <MessageSquare size={32} className="mx-auto mb-3 opacity-40" />
+                                    <p className="font-bold text-slate-700">Comments are disabled</p>
+                                    <p className="text-sm">Comments are not available for this article.</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 

@@ -29,7 +29,12 @@ export default function Signup() {
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
             const user = userCredential.user;
-            await sendEmailVerification(user);
+            
+            const actionCodeSettings = {
+                url: 'https://newsjournalsl.web.app',
+                handleCodeInApp: true,
+            };
+            await sendEmailVerification(user, actionCodeSettings);
 
             // Check if this user is an authorized school admin or reporter
             let userRole = 'public';

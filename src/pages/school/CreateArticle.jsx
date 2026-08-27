@@ -77,7 +77,7 @@ export default function CreateArticle() {
                 await updateArticle(id, articleData);
                 alert('Article updated successfully!');
             } else {
-                await createArticle(articleData);
+                const docRef = await createArticle(articleData);
                 // Notify all super admins about the new article
                 try {
                     const superAdminIds = await getSuperAdminIds();
@@ -92,6 +92,27 @@ export default function CreateArticle() {
                 } catch (notifErr) {
                     console.error('Failed to send notification:', notifErr);
                 }
+
+                // 4 & 5. Send OneSignal push to opted-in subscribers
+                try {
+                    const pushPayload = {
+                        title: title,
+                        schoolName: articleData.schoolName,
+                        url: `${window.location.origin}/article/${docRef.id}`
+                    };
+                    
+                    await fetch('/api/sendPush', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(pushPayload),
+                    });
+                } catch (pushErr) {
+                    // Do not fail the article publish if push fails
+                    console.error('Failed to send push notification:', pushErr);
+                }
+
                 alert('Article published successfully!');
             }
             navigate('/school-admin/articles');
