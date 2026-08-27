@@ -31,7 +31,7 @@ function ToolbarButton({ onClick, isActive = false, disabled = false, title, chi
 }
 
 function ToolbarDivider() {
-  return <div className="w-px h-6 bg-slate-200 mx-1" />;
+  return <div className="w-px h-6 bg-slate-200 mx-1 flex-shrink-0" />;
 }
 
 export default function RichTextEditor({ value = '', onChange }) {
@@ -39,14 +39,20 @@ export default function RichTextEditor({ value = '', onChange }) {
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+        // Hard break (Shift+Enter) is included in StarterKit by default
+        // Enter creates a new paragraph, Shift+Enter creates a <br>
       }),
       Underline,
       Link.configure({
         openOnClick: false,
-        HTMLAttributes: { class: 'text-blue-600 underline cursor-pointer' },
+        HTMLAttributes: {
+          class: 'text-blue-600 underline cursor-pointer',
+          rel: 'noopener noreferrer',
+        },
       }),
       TextAlign.configure({
         types: ['heading', 'paragraph'],
+        alignments: ['left', 'center', 'right', 'justify'],
       }),
     ],
     content: value,
@@ -55,7 +61,9 @@ export default function RichTextEditor({ value = '', onChange }) {
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-slate lg:prose-lg max-w-none min-h-[400px] px-5 py-4 outline-none focus:outline-none',
+        // No prose class here — handled by .ProseMirror CSS in index.css
+        class: 'outline-none focus:outline-none',
+        'data-placeholder': 'Write your article here... (Press Enter for new paragraph, Shift+Enter for line break)',
       },
     },
   });
@@ -63,9 +71,9 @@ export default function RichTextEditor({ value = '', onChange }) {
   const setLink = useCallback(() => {
     if (!editor) return;
     const previousUrl = editor.getAttributes('link').href;
-    const url = window.prompt('Enter URL', previousUrl || 'https://');
+    const url = window.prompt('Enter URL (leave blank to remove link):', previousUrl || 'https://');
     if (url === null) return; // cancelled
-    if (url === '') {
+    if (url === '' || url === 'https://') {
       editor.chain().focus().extendMarkRange('link').unsetLink().run();
       return;
     }
@@ -77,7 +85,8 @@ export default function RichTextEditor({ value = '', onChange }) {
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-0.5 px-3 py-2 bg-slate-50 border-b border-gray-200">
+      <div className="flex flex-wrap items-center gap-0.5 px-3 py-2 bg-slate-50 border-b border-gray-200 sticky top-0 z-10">
+
         {/* Text formatting */}
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -110,7 +119,7 @@ export default function RichTextEditor({ value = '', onChange }) {
 
         <ToolbarDivider />
 
-        {/* Headings */}
+        {/* Headings & paragraph */}
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
           isActive={editor.isActive('heading', { level: 1 })}
@@ -135,14 +144,14 @@ export default function RichTextEditor({ value = '', onChange }) {
         <ToolbarButton
           onClick={() => editor.chain().focus().setParagraph().run()}
           isActive={editor.isActive('paragraph')}
-          title="Paragraph"
+          title="Normal Paragraph"
         >
           <Pilcrow size={16} />
         </ToolbarButton>
 
         <ToolbarDivider />
 
-        {/* Lists */}
+        {/* Lists & structure */}
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           isActive={editor.isActive('bulletList')}
@@ -166,7 +175,7 @@ export default function RichTextEditor({ value = '', onChange }) {
         </ToolbarButton>
         <ToolbarButton
           onClick={() => editor.chain().focus().setHorizontalRule().run()}
-          title="Horizontal Rule"
+          title="Horizontal Divider"
         >
           <Minus size={16} />
         </ToolbarButton>
@@ -184,7 +193,7 @@ export default function RichTextEditor({ value = '', onChange }) {
         <ToolbarButton
           onClick={() => editor.chain().focus().setTextAlign('center').run()}
           isActive={editor.isActive({ textAlign: 'center' })}
-          title="Align Center"
+          title="Align Centre"
         >
           <AlignCenter size={16} />
         </ToolbarButton>
@@ -209,7 +218,7 @@ export default function RichTextEditor({ value = '', onChange }) {
         <ToolbarButton
           onClick={setLink}
           isActive={editor.isActive('link')}
-          title="Insert Link"
+          title="Insert / Edit Link"
         >
           <LinkIcon size={16} />
         </ToolbarButton>
@@ -237,14 +246,19 @@ export default function RichTextEditor({ value = '', onChange }) {
         {/* Clear formatting */}
         <ToolbarButton
           onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}
-          title="Clear Formatting"
+          title="Clear All Formatting"
         >
           <RemoveFormatting size={16} />
         </ToolbarButton>
       </div>
 
-      {/* Editor content area */}
+      {/* Editor content area — styled by .ProseMirror in index.css */}
       <EditorContent editor={editor} />
+
+      {/* Word count */}
+      <div className="px-5 py-2 border-t border-gray-100 bg-slate-50 text-xs text-slate-400 text-right">
+        {editor.getText().split(/\s+/).filter(Boolean).length} words
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Download, Share2, Clock, MapPin, Loader2, AlertCircle, Check } from 'lu
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { motion } from 'framer-motion';
+import DOMPurify from 'dompurify';
 
 import { getEmbedUrl } from '../utils/videoUtils';
 import { getArticleById, getRelatedArticles } from '../services/articleService';
@@ -186,8 +187,8 @@ export default function Article() {
                             <img src={article.coverImage} alt={article.title} className="w-full h-full object-cover" />
                         </div>
                     )}
-                    <div className="prose prose-lg prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-blue-600 max-w-none">
-                        <div dangerouslySetInnerHTML={{ __html: article.body }} />
+                    <div className="prose prose-slate lg:prose-lg prose-headings:font-bold prose-headings:text-slate-900 prose-p:text-slate-700 prose-a:text-blue-600 max-w-none article-body">
+                        <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(article.body) }} />
 
                         <div className="mt-12 pt-8 border-t border-slate-100 flex items-center gap-4">
                             <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 font-black text-xl border border-blue-100">

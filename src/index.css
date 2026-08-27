@@ -40,3 +40,213 @@ body {
     transform: translateX(0) scale(1);
   }
 }
+
+/* ========================================
+   TipTap Rich Text Editor Content Styles
+   ======================================== */
+
+/* Editor writing area */
+.ProseMirror {
+  outline: none;
+  min-height: 400px;
+  padding: 1.25rem 1.5rem;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: #334155;
+}
+
+.ProseMirror p {
+  margin-bottom: 1rem;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: #94a3b8;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.ProseMirror h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: #0f172a;
+}
+
+.ProseMirror h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: #1e293b;
+}
+
+.ProseMirror h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.4;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: #1e293b;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.ProseMirror ul {
+  list-style-type: disc;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+}
+
+.ProseMirror li {
+  margin-bottom: 0.25rem;
+  line-height: 1.75;
+}
+
+.ProseMirror li p {
+  margin-bottom: 0;
+}
+
+.ProseMirror blockquote {
+  border-left: 4px solid #3b82f6;
+  padding-left: 1rem;
+  margin: 1.5rem 0;
+  color: #475569;
+  font-style: italic;
+  background: #f8fafc;
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.ProseMirror hr {
+  border: none;
+  border-top: 2px solid #e2e8f0;
+  margin: 2rem 0;
+}
+
+.ProseMirror a {
+  color: #2563eb;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ProseMirror strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ProseMirror em {
+  font-style: italic;
+}
+
+.ProseMirror u {
+  text-decoration: underline;
+}
+
+.ProseMirror s {
+  text-decoration: line-through;
+}
+
+/* ========================================
+   Published Article Prose Styles
+   (fallback if @tailwindcss/typography
+   prose classes aren't enough)
+   ======================================== */
+
+.article-body {
+  font-size: 1.125rem;
+  line-height: 1.8;
+  color: #334155;
+}
+
+.article-body p {
+  margin-bottom: 1.25rem;
+}
+
+.article-body h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+.article-body h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-top: 1.75rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.3;
+}
+
+.article-body h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.4;
+}
+
+.article-body ul,
+.article-body ol {
+  padding-left: 1.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.article-body ul {
+  list-style-type: disc;
+}
+
+.article-body ol {
+  list-style-type: decimal;
+}
+
+.article-body li {
+  margin-bottom: 0.4rem;
+  line-height: 1.75;
+}
+
+.article-body blockquote {
+  border-left: 4px solid #3b82f6;
+  padding: 0.75rem 1.25rem;
+  margin: 1.75rem 0;
+  color: #475569;
+  font-style: italic;
+  background: #f8fafc;
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.article-body hr {
+  border: none;
+  border-top: 2px solid #e2e8f0;
+  margin: 2rem 0;
+}
+
+.article-body a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.article-body strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.article-body em {
+  font-style: italic;
+}
