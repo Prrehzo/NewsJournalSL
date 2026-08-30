@@ -37,7 +37,7 @@ service cloud.firestore {
         isSuperAdmin() ||
         ((getUserData().role == 'school_admin' || getUserData().role == 'School Admin') && getUserData().schoolId == resource.data.schoolId) ||
         // Allow migration logic to search by email (queried by public/authenticated users during login)
-        request.query.limit <= 1
+        (request.query != null && request.query.limit <= 1)
       );
       allow create: if isSignedIn(); // Allow initial signup
       allow update: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
@@ -55,36 +55,25 @@ service cloud.firestore {
     // Articles Collection
     match /articles/{articleId} {
       function isReactionUpdate() {
-        let diffKeys = request.resource.data.diff(resource.data).affectedKeys();
-        let onlyAllowedKeysChanged = diffKeys.hasOnly(['likeCount', 'dislikeCount']);
+        let authOk = request.auth != null;
+        let keysOk = request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount', 'dislikeCount']);
         
-        let oldLikeCount = resource.data.likeCount != null ? resource.data.likeCount : 0;
-        let newLikeCount = request.resource.data.likeCount != null ? request.resource.data.likeCount : 0;
-        let oldDislikeCount = resource.data.dislikeCount != null ? resource.data.dislikeCount : 0;
-        let newDislikeCount = request.resource.data.dislikeCount != null ? request.resource.data.dislikeCount : 0;
+        let newLike = request.resource.data.likeCount != null ? request.resource.data.likeCount : 0;
+        let oldLike = resource.data.likeCount != null ? resource.data.likeCount : 0;
+        let newDislike = request.resource.data.dislikeCount != null ? request.resource.data.dislikeCount : 0;
+        let oldDislike = resource.data.dislikeCount != null ? resource.data.dislikeCount : 0;
         
-        let likeDiff = newLikeCount - oldLikeCount;
-        let dislikeDiff = newDislikeCount - oldDislikeCount;
-        
-        let isValidCounts = newLikeCount >= 0 && newDislikeCount >= 0;
-        
-        let isMathValid = (likeDiff == 1 || likeDiff == 0 || likeDiff == -1) &&
-                          (dislikeDiff == 1 || dislikeDiff == 0 || dislikeDiff == -1) &&
-                          (likeDiff != 0 || dislikeDiff != 0);
+        let rxPath = authOk ? /databases/$(database)/documents/articles/$(articleId)/reactions/$(request.auth.uid) : /databases/$(database)/documents/articles/$(articleId)/reactions/invalid;
+        let rxExists = authOk ? existsAfter(rxPath) : false;
+        let rxType = rxExists ? getAfter(rxPath).data.type : '';
 
-        let reactionPath = /databases/$(database)/documents/articles/$(articleId)/reactions/$(request.auth.uid);
-        let reactionExistsAfter = existsAfter(reactionPath);
-        let reactionDataAfter = reactionExistsAfter ? getAfter(reactionPath).data : null;
-
-        let isLike = likeDiff == 1 && dislikeDiff == 0 && reactionExistsAfter && reactionDataAfter.type == 'like';
-        let isDislike = likeDiff == 0 && dislikeDiff == 1 && reactionExistsAfter && reactionDataAfter.type == 'dislike';
-        let isUnlike = likeDiff == -1 && dislikeDiff == 0 && !reactionExistsAfter;
-        let isUndislike = likeDiff == 0 && dislikeDiff == -1 && !reactionExistsAfter;
-        let isSwitchLike = likeDiff == 1 && dislikeDiff == -1 && reactionExistsAfter && reactionDataAfter.type == 'like';
-        let isSwitchDislike = likeDiff == -1 && dislikeDiff == 1 && reactionExistsAfter && reactionDataAfter.type == 'dislike';
-        
-        return onlyAllowedKeysChanged && isValidCounts && isMathValid && (
-          isLike || isDislike || isUnlike || isUndislike || isSwitchLike || isSwitchDislike
+        return authOk && keysOk && newLike >= 0 && newDislike >= 0 && (
+          ((newLike - oldLike) == 1 && (newDislike - oldDislike) == 0 && rxExists && rxType == 'like') ||
+          ((newLike - oldLike) == 0 && (newDislike - oldDislike) == 1 && rxExists && rxType == 'dislike') ||
+          ((newLike - oldLike) == -1 && (newDislike - oldDislike) == 0 && !rxExists) ||
+          ((newLike - oldLike) == 0 && (newDislike - oldDislike) == -1 && !rxExists) ||
+          ((newLike - oldLike) == 1 && (newDislike - oldDislike) == -1 && rxExists && rxType == 'like') ||
+          ((newLike - oldLike) == -1 && (newDislike - oldDislike) == 1 && rxExists && rxType == 'dislike')
         );
       }
 
@@ -113,9 +102,16 @@ service cloud.firestore {
       }
       
       match /comments/{commentId} {
+        function isArticleSchoolPremium() {
+          let article = get(/databases/$(database)/documents/articles/$(articleId)).data;
+          let school = get(/databases/$(database)/documents/schools/$(article.schoolId)).data;
+          return school.plan == 'premium';
+        }
+        
         allow read: if true;
         allow create: if isSignedIn() && 
           request.auth.token.email_verified == true &&
+          isArticleSchoolPremium() &&
           request.resource.data.userId == request.auth.uid &&
           request.resource.data.articleId == articleId &&
           request.resource.data.text is string &&
@@ -123,6 +119,13 @@ service cloud.firestore {
           request.resource.data.keys().hasOnly(['userId', 'articleId', 'text', 'displayName', 'createdAt', 'updatedAt']);
         allow delete: if isSignedIn() && (request.auth.uid == resource.data.userId || isSuperAdmin());
       }
+    }
+    
+    // Notifications Collection
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
     
     // Settings Collection
